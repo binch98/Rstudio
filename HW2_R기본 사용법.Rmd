@@ -41,6 +41,7 @@ abs(-4.5)
 round(pi, 2)
 
 ```
+
 ### 예제2
 ```{r question 2}
 # 2-1 정규분포: x = 5, mu = 5, sigma = 1
@@ -53,8 +54,6 @@ dexp(1, rate = 5, log = FALSE)
 dweibull(50, shape = 80, scale = 1.5, log = FALSE)
 
 ```
-
-
 
 ### 예제3
 ```{r question 3}
@@ -70,6 +69,7 @@ A^5*3^b
 #할당했던 변수 제거
 rm(A, b)
 ```
+
 ### 예제4
 ```{r question 4}
 
@@ -79,6 +79,7 @@ norm_pdf_10 <- function(x, mu, sigma) {
 }
 
 ```
+
 ### 예제5
 ```{r question 5}
 # 5-1
@@ -91,6 +92,7 @@ prod(1:10)
 sum(cos(((1:20)/20)*pi))
 
 ```
+
 ### 예제6
 ```{r question 6}
 
@@ -104,6 +106,7 @@ mat
 mat[2,3] # 2행 3열에 해당하는 값 추출
 
 ```
+
 ### 예제7
 ```{r question 7}
 
@@ -115,6 +118,7 @@ virginica_df <- df[101:150, 1:5] #종류가 virginica인 데이터 추출
 virginica_df
 
 ```
+
 ### 예제8
 ```{r question 8}
 
@@ -125,6 +129,7 @@ list1
 
 
 ```
+
 ### 예제9
 ```{r question 9}
 

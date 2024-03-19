@@ -18,6 +18,7 @@ output: html_document
 
 
 ### 예제1
+기본연산 및 수학함수를 활용하여 계산
 ```{r question 1}
 # 1-1 
 sqrt(2)
@@ -43,6 +44,7 @@ round(pi, 2)
 ```
 
 ### 예제2
+다음과 같은 분포에 대한 확률밀도함수를 산출
 ```{r question 2}
 # 2-1 정규분포: x = 5, mu = 5, sigma = 1
 dnorm(5, mean = 5, sd = 1, log = FALSE)
@@ -56,6 +58,8 @@ dweibull(50, shape = 80, scale = 1.5, log = FALSE)
 ```
 
 ### 예제3
+A = 5, b = 6일 때 변수를 할당하여 계산
+계산이 끝난 후 A와 b 변수를 스크립트에서 제거
 ```{r question 3}
 # A와 b 변수 할당
 A <- 5; b <- 6
@@ -71,6 +75,8 @@ rm(A, b)
 ```
 
 ### 예제4
+정규분포에 대한 확률밀도함수를 기반으로 입,출력 함수 정의
+입력인자 x, mu, sigma/ 출력값: 10*f(x)
 ```{r question 4}
 
 norm_pdf_10 <- function(x, mu, sigma) {
@@ -81,6 +87,7 @@ norm_pdf_10 <- function(x, mu, sigma) {
 ```
 
 ### 예제5
+합: sum, 곱: prod 함수를 사용하여 연산 수행
 ```{r question 5}
 # 5-1
 sum((1:100)^2)
@@ -94,6 +101,8 @@ sum(cos(((1:20)/20)*pi))
 ```
 
 ### 예제6
+2의 배수로 구성된 3*3행렬을 생성하고, 행 이름을 알파펫, 열 이름을 한글로 정의
++ 2행3열에 해당하는 값 추출
 ```{r question 6}
 
 x <- 1:9
@@ -108,6 +117,7 @@ mat[2,3] # 2행 3열에 해당하는 값 추출
 ```
 
 ### 예제7
+R에서 기본으로 제공되는 iris 데이터에서, 종류(Species)가 'virginica'인 데이터만 추출
 ```{r question 7}
 
 df <- data.frame(data = iris)
@@ -120,6 +130,7 @@ virginica_df
 ```
 
 ### 예제8
+iris 데이터의 3번째 열, Species 변수를 각각 벡터로 저장하고, 두 벡터를 원소로 가지는 리스트를 생성
 ```{r question 8}
 
 vec1 <- iris[,3] # iris 데이터의 3번째 열
@@ -131,6 +142,10 @@ list1
 ```
 
 ### 예제9
+데이터를 입력값으로 받아서 데이터의 각 행마다 아래의 반복문을 수행하는 함수 코드를 작성
+- 모든 행에 대하여 'Species'변수가 'setosa'인 경우 1을 출력, 'versicolor'인 경우 2를 출력, 'virginica'인 경우 3을 출력
+- 출력은 print() 함수를 사용할 것
+- 단순 연산이 아니라 "함수화"가 이루어진 코드만 정답으로 인정
 ```{r question 9}
 
 y <- iris

@@ -1,0 +1,654 @@
+---
+title: "팀프로젝트_3조"
+author: "LSH"
+date: "2024-05-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## [데이터 분석 개요]
+### 1. 대상 데이터: 밀링 기계 데이터셋
+(https://www.kaggle.com/datasets/shivamb/machine-predictive-maintenance-classification)
+
+- UID : 1~10000 범위의 고유 식별자
+- product ID : 제품 일련번호
+- Type : 제품 품질 (H, M, L)
+- Air temperature : 
+- Process temperature :
+- Rotational speed : RPM
+- Torque : 토그 값
+- Tool wear : Tool 마모(사용시간), 생산된 제품 품질마다 시간 구분 (H:5min, M:3min, L:2min)
+- Target : Failure or Not
+- Failure Type : Tpye of Failure
+
+<br>
+<br>
+<br>
+
+### 1. 데이터 탐색 (EDA) 및 전처리
+```{r preprocess}
+dat <- read.csv('predictive_maintenance.csv')
+str(dat)
+
+# column 이름 변경
+colnames(dat) <- gsub('[.]','_',colnames(dat))
+colnames(dat) <- gsub('_+','_',colnames(dat))
+colnames(dat) <- gsub('_$','',colnames(dat))
+colnames(dat)
+
+# 데이터 요약 정보
+summary(dat)
+
+# UID, ProductID 변수 삭제
+dat <- dat[,-c(1,2)]
+colnames(dat)
+
+# 변수 Type 변경
+dat$Target <- as.character(dat$Target)
+
+# 결측치 확인 (True : 결측치, False : 정상)
+table(is.na(dat))
+
+# 데이터 시각화
+library(ggplot2)
+library(gridExtra)
+library(dplyr)
+
+# Type Column Data
+table(dat$Type)
+
+type_counts <- dat %>% 
+  count(Type) %>% 
+  mutate(perc = n / sum(n) * 100)
+
+ggplot(type_counts, aes(x = "", y = perc, fill = Type)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  theme_void() +
+  geom_text(aes(label = paste0(round(perc, 1), "%")), 
+            position = position_stack(vjust = 0.5)) +
+  ggtitle("Type Distribution") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# Target & Failure Type Column Data (0 : No Fail, 1 : Fail)
+table(dat$Target)
+table(dat$Failure_Type)
+
+# Target Column의 0(No Fail) 갯수와 Failure_type Column의 No Failure 갯수 차이 존재.
+# 이상치 제거 (Target 값과 Failure Type의 내용과 일치하지 않는 데이터 제거)
+# 'Target'이 1이면서 'FailureType'이 'No Failure'인 행 제거
+dat <- dat[!(dat$Target == "1" & dat$Failure_Type == "No Failure"),]
+# 'Target'이 0이면서 'FailureType'이 'No Failure'가 아닌 행 제거
+dat <- dat[!(dat$Target == "0" & dat$Failure_Type != "No Failure"),]
+
+# 이상치 제거 여부 확인
+table(dat$Target)
+table(dat$Failure_Type)
+
+# Failure Type Column Data
+F_type_counts <- dat %>% 
+  filter(Failure_Type != "No Failure") %>%
+  count(Failure_Type) %>% 
+  mutate(perc = n / sum(n) * 100)
+
+ggplot(F_type_counts, aes(x = "", y = perc, fill = Failure_Type)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  theme_void() +
+  geom_text(aes(label = paste0(round(perc, 1), "%")), 
+            position = position_stack(vjust = 0.5)) +
+  ggtitle("Failure Type Distribution") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# Numerical, Integer Column 시각화
+visualize <- function(x){
+    ggplot() + geom_histogram(aes(x), color="white")
+}
+
+g_air_temp <- visualize(dat[,2]) + xlab(colnames(dat)[2])
+g_proc_temp <- visualize(dat[,3]) + xlab(colnames(dat)[3])
+g_rpm <- visualize(dat[,4]) + xlab(colnames(dat)[4])
+g_torq <- visualize(dat[,5]) + xlab(colnames(dat)[5])
+g_tool_wear <- visualize(dat[,6]) + xlab(colnames(dat)[6])
+
+grid.arrange(g_air_temp, g_proc_temp, g_rpm, g_torq, g_tool_wear, ncol = 3)
+```
+### 2. 가설 설정 및 검정
+```{r hypothesis}
+
+## 1. 제품 별 품질타입 L,M,H(각각 50,30,20%)의 차이 분석
+
+# 가설설정 - Air_temperature의 평균
+# H0: L, M, H 타입간 Air_temperature의 평균에 차이가 없다.
+# H1: L, M, H 타입간 Air_temperature의 평균에 차이가 있다.
+
+# 3수준 이상이므로 ANOVA 활용
+
+anova_air <- aov(Air_temperature_K ~ Type, data = dat)
+summary(anova_air)
+
+# p-value가 유의수준인 0.05보다 크므로 귀무가설 기각 불가
+# => 평균 차이가 유의하지 않음
+
+# 타입별 분포 시각화(Boxplot)
+{ ggplot(dat, aes(x = Type, y = Air_temperature_K)) +
+  geom_boxplot() +
+  labs(title = "Box Plot of Air Temperature by Type",
+       x = "Type",
+       y = "Air Temperature (K)") +
+  theme_minimal() }
+
+
+
+# 가설설정 - Process_temperature의 평균
+# H0: L, M, H 타입간 Process_temperature의 평균에 차이가 없다.
+# H1: L, M, H 타입간 Process_temperature의 평균에 차이가 있다.
+
+anova_process <- aov(Process_temperature_K ~ Type, data = dat)
+summary(anova_process)
+
+# p-value가 유의수준인 0.05보다 크므로 귀무가설 기각 불가
+# => 평균 차이가 유의하지 않음
+
+# 타입별 분포 시각화(Boxplot)
+{ ggplot(dat, aes(x = Type, y = Process_temperature_K)) +
+  geom_boxplot() +
+  labs(title = "Box Plot of Process Temperature by Type",
+       x = "Type",
+       y = "Process Temperature (K)") +
+  theme_minimal() }
+
+
+
+# 가설설정 - Rotational_speed의 평균
+# H0: L, M, H 타입간 Rotational_speed의 평균에 차이가 없다.
+# H1: L, M, H 타입간 Rotational_speed의 평균에 차이가 있다.
+
+anova_rot <- aov(Rotational_speed_rpm ~ Type, data = dat)
+summary(anova_rot)
+
+# p-value가 유의수준인 0.05보다 크므로 귀무가설 기각 불가
+# => 평균 차이가 유의하지 않음
+
+# 타입별 분포 시각화(Boxplot)
+{ ggplot(dat, aes(x = Type, y = Rotational_speed_rpm)) +
+  geom_boxplot() +
+  labs(title = "Box Plot of Rotational speed by Type",
+       x = "Type",
+       y = "Rotational speed (RPM)") +
+  theme_minimal() }
+
+# => ㅣ타입의 군내 수가 많아서 이상치 수 또한 많은 것으로 보임. 향후 추가 분석 필요
+
+
+
+# 가설설정 - Torque의 평균
+# H0: L, M, H 타입간 Torque의 평균에 차이가 없다.
+# H1: L, M, H 타입간 Torque의 평균에 차이가 있다.
+
+anova_torque <- aov(Torque_Nm ~ Type, data = dat)
+summary(anova_torque)
+
+# p-value가 유의수준인 0.05보다 크므로 귀무가설 기각 불가
+# => 평균 차이가 유의하지 않음
+
+# 타입별 분포 시각화(Boxplot)
+{ ggplot(dat, aes(x = Type, y = Torque_Nm)) +
+  geom_boxplot() +
+  labs(title = "Box Plot of Torque by Type",
+       x = "Type",
+       y = "Torque (Nm)") +
+  theme_minimal() }
+
+
+# 가설설정 - Tool_wear의 평균
+# H0: L, M, H 타입간 Tool_wear의 평균에 차이가 없다.
+# H1: L, M, H 타입간 Tool_wear의 평균에 차이가 있다.
+
+anova_tw <- aov(Tool_wear_min ~ Type, data = dat)
+summary(anova_tw)
+
+# p-value가 유의수준인 0.05보다 크므로 귀무가설 기각 불가
+# => 평균 차이가 유의하지 않음
+
+# 타입별 분포 시각화(Boxplot)
+{ ggplot(dat, aes(x = Type, y = Tool_wear_min)) +
+  geom_boxplot() +
+  labs(title = "Box Plot of Tool wear by Type",
+       x = "Type",
+       y = "Tool wear") +
+  theme_minimal() }
+
+
+
+## 2. 양호/고장발생 그룹간 차이 분석
+
+# 가설설정 - Air_temperature의 평균
+# H0: 양호/고장발생 그룹간 Air_temperature의 평균이 같다.
+# H1: 양호/고장발생 그룹간 Air_temperature의 평균이 다르다.
+
+# Target 그룹별 Air_temperature 데이터 분리
+airtemp_0 <- subset(dat, Target == 0)$Air_temperature_K
+airtemp_1 <- subset(dat, Target == 1)$Air_temperature_K
+
+# 두 그룹 간 평균 비교 (t-검정)
+t_test_airtemp <- t.test(airtemp_0, airtemp_1)
+print(t_test_airtemp)
+
+# p-value가 유의수준인 0.05보다 작으므로 귀무가설 기각(대립가설 채택)
+# => 그룹간 평균에 유의미한 차이가 있음
+
+# 가설설정 - Air_temperature의 분산
+# H0: 양호/고장발생 그룹간 Air_temperature의 분산에 차이가 없다.
+# H1: 양호/고장발생 그룹간 Air_temperature의 분산에 차이가 있다.
+
+# 두 그룹 간 분산 비교 (F-검정)
+f_test_airtemp <- var.test(airtemp_0, airtemp_1)
+print(f_test_airtemp)
+
+# p-value가 유의수준인 0.05보다 크므로 귀무가설 기각 불가
+# => 그룹간 분산에는 유의한 차이가 없음
+
+# 고장 발생 여부별 분포 시각화(Boxplot)
+
+{ ggplot(dat, aes(x = Target, y = Air_temperature_K)) +
+  geom_boxplot() +
+  labs(title = "Box Plot of Air temperature by Target",
+       x = "Type",
+       y = "Air temperature (K)") +
+  theme_minimal() }
+
+
+# 가설설정 - Process_temperature의 평균
+# H0: 양호/고장발생 그룹간 Process_temperature의 평균이 같다.
+# H1: 양호/고장발생 그룹간 Process_temperature의 평균이 다르다.
+
+# Target 그룹별 Process_temperature 데이터 분리
+processtemp_0 <- subset(dat, Target == 0)$Process_temperature_K
+processtemp_1 <- subset(dat, Target == 1)$Process_temperature_K
+
+# 두 그룹 간 평균 비교 (t-검정)
+t_test_processtemp <- t.test(processtemp_0, processtemp_1)
+print(t_test_processtemp)
+
+# p-value가 유의수준인 0.05보다 작으므로 귀무가설 기각(대립가설 채택)
+# => 그룹간 평균에 유의미한 차이가 있음
+
+# 가설설정 - Process_temperature의 분산
+# H0: 양호/고장발생 그룹간 Process_temperature의 분산에 차이가 없다.
+# H1: 양호/고장발생 그룹간 Process_temperature의 분산에 차이가 있다.
+
+# 두 그룹 간 분산 비교 (F-검정)
+f_test_processtemp <- var.test(processtemp_0, processtemp_1)
+print(f_test_processtemp)
+
+# p-value가 유의수준인 0.05보다 작으므로 귀무가설 기각(대립가설 채택)
+# => 그룹간 분산에 유의미한 차이가 있음
+
+# 고장 발생 여부별 분포 시각화(Boxplot)
+
+{ ggplot(dat, aes(x = Target, y = Process_temperature_K)) +
+  geom_boxplot() +
+  labs(title = "Box Plot of Process temperature by Target",
+       x = "Type",
+       y = "Process temperature (K)") +
+  theme_minimal() }
+
+
+# 가설설정 - Rotational_speed의 평균
+# H0: 양호/고장발생 그룹간 Rotational_speed의 평균이 같다.
+# H1: 양호/고장발생 그룹간 Rotational_speed의 평균이 다르다.
+
+# Target 그룹별 Rotational_speed 데이터 분리
+rot_0 <- subset(dat, Target == 0)$Rotational_speed_rpm
+rot_1 <- subset(dat, Target == 1)$Rotational_speed_rpm
+
+# 두 그룹 간 평균 비교 (t-검정)
+t_test_rot <- t.test(rot_0, rot_1)
+print(t_test_rot)
+
+# p-value가 유의수준인 0.05보다 작으므로 귀무가설 기각(대립가설 채택)
+# => 그룹간 평균에 유의미한 차이가 있음
+
+# 가설설정 - Rotational_speed의 분산
+# H0: 양호/고장발생 그룹간 Rotational_speed의 분산에 차이가 없다.
+# H1: 양호/고장발생 그룹간 Rotational_speed의 분산에 차이가 있다.
+
+# 두 그룹 간 분산 비교 (F-검정)
+f_test_rot <- var.test(rot_0, rot_1)
+print(f_test_rot)
+
+# p-value가 유의수준인 0.05보다 작으므로 귀무가설 기각(대립가설 채택)
+# => 그룹간 분산에 유의미한 차이가 있음
+
+# 고장 발생 여부별 분포 시각화(Boxplot)
+
+{ ggplot(dat, aes(x = Target, y = Rotational_speed_rpm)) +
+  geom_boxplot() +
+  labs(title = "Box Plot of Rotational speed by Target",
+       x = "Type",
+       y = "Rotational speed (RPM)") +
+  theme_minimal() }
+
+
+# 가설설정 - Torque의 평균
+# H0: 양호/고장발생 그룹간 Torque의 평균이 같다.
+# H1: 양호/고장발생 그룹간 Torque의 평균이 다르다.
+
+# Target 그룹별 Torque 데이터 분리
+torque_0 <- subset(dat, Target == 0)$Torque_Nm
+torque_1 <- subset(dat, Target == 1)$Torque_Nm
+
+# 두 그룹 간 평균 비교 (t-검정)
+t_test_torque <- t.test(torque_0, torque_1)
+print(t_test_torque)
+
+# p-value가 유의수준인 0.05보다 작으므로 귀무가설 기각(대립가설 채택)
+# => 그룹간 평균에 유의미한 차이가 있음
+
+# 가설설정 - Torque의 분산
+# H0: 양호/고장발생 그룹간 Torque의 분산에 차이가 없다.
+# H1: 양호/고장발생 그룹간 Torque의 분산에 차이가 있다.
+
+# 두 그룹 간 분산 비교 (F-검정)
+f_test_torque <- var.test(torque_0, torque_1)
+print(f_test_torque)
+
+# p-value가 유의수준인 0.05보다 작으므로 귀무가설 기각(대립가설 채택)
+# => 그룹간 분산에 유의미한 차이가 있음
+
+# 고장 발생 여부별 분포 시각화(Boxplot)
+
+{ ggplot(dat, aes(x = Target, y = Torque_Nm)) +
+  geom_boxplot() +
+  labs(title = "Box Plot of Torque by Target",
+       x = "Type",
+       y = "Torque (Nm)") +
+  theme_minimal() }
+
+
+# 가설설정 - Tool wear의 평균
+# H0: 양호/고장발생 그룹간 Tool wear의 평균이 같다.
+# H1: 양호/고장발생 그룹간 Tool wear의 평균이 다르다.
+
+# Target 그룹별 Tool wear 데이터 분리
+tw_0 <- subset(dat, Target == 0)$Tool_wear_min
+tw_1 <- subset(dat, Target == 1)$Tool_wear_min
+
+# 두 그룹 간 평균 비교 (t-검정)
+t_test_tw <- t.test(tw_0, tw_1)
+print(t_test_tw)
+
+# p-value가 유의수준인 0.05보다 작으므로 귀무가설 기각(대립가설 채택)
+# => 그룹간 평균에 유의미한 차이가 있음
+
+# 가설설정 - Tool wear의 분산
+# H0: 양호/고장발생 그룹간 Tool wear의 분산에 차이가 없다.
+# H1: 양호/고장발생 그룹간 Tool wear의 분산에 차이가 있다.
+
+# 두 그룹 간 분산 비교 (F-검정)
+f_test_tw <- var.test(tw_0, tw_1)
+print(f_test_tw)
+
+# p-value가 유의수준인 0.05보다 작으므로 귀무가설 기각(대립가설 채택)
+# => 그룹간 분산에 유의미한 차이가 있음
+
+# 고장 발생 여부별 분포 시각화(Boxplot)
+
+{ ggplot(dat, aes(x = Target, y = Tool_wear_min)) +
+  geom_boxplot() +
+  labs(title = "Box Plot of Tool wear by Target",
+       x = "Type",
+       y = "Tool wear") +
+  theme_minimal() }
+
+```
+
+### 3. 모델 생성
+```{r model}
+# 범주형 데이터 -> 수치형 데이터로 
+dat$Type <- as.numeric(factor(dat$Type))
+dat$Target <- as.numeric(factor(dat$Target))
+dat$Failure_Type <- as.numeric(factor(dat$Failure_Type))
+unique(dat$Failure_Type)
+unique(dat$Target)
+unique(dat$Type)
+
+
+library(caret)
+
+# 트레인, 테스트셋 분할
+set.seed(0)
+trainidx <- sample(1:nrow(dat), 0.7*nrow(dat))
+trainset <- dat[trainidx,]
+testset <- dat[-trainidx,]
+
+# 표준화
+# Target과 Failure_Type 종속 변수로 설정
+depidx <- (ncol(trainset)-1):ncol(trainset)
+scaling <- preProcess(trainset[, -depidx], method = c("center", "scale"))
+
+traintarget <- trainset[,depidx]
+trainsc <- predict(scaling, trainset[, -depidx])
+trainsc <- cbind(trainsc, traintarget)
+
+testtarget <- testset[,depidx]
+testsc <- predict(scaling, testset[, -depidx])
+testsc <- cbind(testsc, testtarget)
+
+# 상관 행렬 계산 및 시각화
+numeric_columns <- sapply(trainsc, is.numeric)
+trainsc1 <- trainsc[, numeric_columns]
+testsc1 <- testsc[, numeric_columns]
+colnames(trainsc)
+
+# 변수간 상관계수 도출(히트맵)
+library(corrplot)
+par(mfrow=c(1,1))
+corr <- cor(trainsc1, method='pearson')
+col <- colorRampPalette(c('white','blue'))
+corrplot(abs(corr), method='color', col=col(200), type='upper',tl.cex = 0.5, tl.col='black')
+
+# 2. 특징 추출 및 차원 축소
+
+
+# PCA 
+
+
+pca1 <- prcomp(trainsc1[, -ncol(trainsc1)])
+summary(pca1) #최적 주성분 4개
+
+pca1 <- preProcess(trainsc1[, -ncol(trainsc1)], method = 'pca')
+trainpca1 <- predict(pca1, trainsc1[,-ncol(trainsc1)])[,1:4]
+trainpca1 <- cbind(trainpca1, trainsc[, c('Target', 'Failure_Type')])
+
+testpca1 <- predict(pca1, testsc1[,-ncol(testsc1)])[,1:4]
+testpca1 <- cbind(testpca1, testsc[, c('Target', 'Failure_Type')])
+
+colnames(trainpca1)
+
+
+# t-SNE 시각화
+
+
+library(Rtsne) 
+library(scatterplot3d)
+par(mfrow=c(2,2))
+
+scatterplot3d(trainsc1[,1:3], pch=16, main = "Original Data")
+
+scatterplot3d(trainpca1[,1:3], pch=16, main = "PCA Data")
+
+# 중복된 행 제거
+unique_trainsc1 <- trainsc[!duplicated(trainsc), ]
+
+# t-SNE 적용 및 시각화 (원본 데이터)
+tsne <- Rtsne(unique_trainsc1[, -((ncol(unique_trainsc1)-1):ncol(unique_trainsc1))], dims = 3)
+scatterplot3d(tsne$Y, pch=16, main = "t-SNE for Original Data")
+
+# 중복된 행 제거
+unique_trainpca1 <- trainpca1[!duplicated(trainpca1), ]
+
+# PCA 후 t-SNE 적용 및 시각화 (PCA 데이터)
+tsnepca <- Rtsne(unique_trainpca1[, -((ncol(unique_trainpca1)-1):ncol(unique_trainpca1))], dims = 3)
+scatterplot3d(tsnepca$Y, pch=16, main = "t-SNE for PCA Data")
+
+## 2. 고장 예측(+유형 분류) 모델 제작
+
+# 2-1. 다중회귀분석
+train_cv <- trainControl(method = "cv", number = 10) 
+library(Metrics)
+
+evaluate <- function(actual,pred){
+  result <- c(mae(actual,pred), mse(actual,pred), rmse(actual,pred))
+  names(result) <- c('MAE','MSE','RMSE')
+  print(result)
+}
+
+# 다중회귀분석 (Target)
+reg1 <- lm(Target ~., data=trainsc1)
+reg1_1 <- step(reg1, direction='forward', trace=F)
+reg1_2 <- step(reg1, direction='backward', trace=F)
+reg1_3 <- step(reg1, direction='both', trace=F)
+
+evaluate(testsc1$Target, predict(reg1, testsc1))
+evaluate(testsc1$Target, predict(reg1_1, testsc1))
+evaluate(testsc1$Target, predict(reg1_2, testsc1))
+evaluate(testsc1$Target, predict(reg1_3, testsc1))
+
+
+reg1_pc <- lm(Target ~., data=trainpca1)
+reg1_pc1 <- step(reg1_pc, direction='forward', trace=F)
+reg1_pc2 <- step(reg1_pc, direction='backward', trace=F)
+reg1_pc3 <- step(reg1_pc, direction='both', trace=F)
+
+
+evaluate(testsc1$Target, predict(reg1_pc, testpca1))
+evaluate(testsc1$Target, predict(reg1_pc1, testpca1))
+evaluate(testsc1$Target, predict(reg1_pc2, testpca1))
+evaluate(testsc1$Target, predict(reg1_pc3, testpca1))
+
+# 다중회귀분석 (Failure_Type)
+regf1 <- lm(Failure_Type ~., data=trainsc1)
+regf1_1 <- step(reg1, direction='forward', trace=F)
+regf1_2 <- step(reg1, direction='backward', trace=F)
+regf1_3 <- step(reg1, direction='both', trace=F)
+
+evaluate(testsc1$Failure_Type, predict(regf1, testsc1))
+evaluate(testsc1$Failure_Type, predict(regf1_1, testsc1))
+evaluate(testsc1$Failure_Type, predict(regf1_2, testsc1))
+evaluate(testsc1$Failure_Type, predict(regf1_3, testsc1))
+
+
+regf1_pc <- lm(Failure_Type ~., data=trainpca1)
+regf1_pc1 <- step(regf1_pc, direction='forward', trace=F)
+regf1_pc2 <- step(regf1_pc, direction='backward', trace=F)
+regf1_pc3 <- step(regf1_pc, direction='both', trace=F)
+
+
+evaluate(testsc1$Failure_Type, predict(regf1_pc, testpca1))
+evaluate(testsc1$Failure_Type, predict(regf1_pc1, testpca1))
+evaluate(testsc1$Failure_Type, predict(regf1_pc2, testpca1))
+evaluate(testsc1$Failure_Type, predict(regf1_pc3, testpca1))
+
+## Target 예측
+# PCA 데이터보다 원본 데이터를 사용한 모델의 성능이 더 높음을 확인하였음  
+# Target 예측에 있어 원본 데이터를 사용한 모델(reg1=reg1_1=reg1_2=reg1_3)이 가장 좋은 성능을 보임(MAE:0.059 MSE:0.020 RMSE: 0.141)
+## Failure_Type 예측
+
+# PCA 데이터보다 원본 데이터를 사용한 모델의 성능이 더 높음을 확인하였음  
+# Failure_Type 예측에 있어 원본 데이터를 사용한 regf1 모델이 가장 좋은 성능을 보임(MAE:0.081 MSE:0.064 RMSE: 0.253)
+
+# 정규화 회귀분석
+library(glmnet)
+
+regglm <- function(train, alpha){
+  x <- as.matrix(train[,-ncol(train)]); y <- as.matrix(train[,ncol(train)])
+  model <- cv.glmnet(x,y, alpha=alpha)
+  plot(model)
+  return(model)
+}
+
+evalglm <- function(model, test){
+  pred <- predict(model, as.matrix(test[,-ncol(test)]))
+  evaluate(test[,ncol(test)], pred)
+}
+
+lasso1 <- regglm(trainsc1, 1)
+ridge1 <- regglm(trainsc1, 0)
+elastic1 <- regglm(trainsc1, 0.5)
+
+evalglm(lasso1, testsc1)
+evalglm(ridge1, testsc1)
+evalglm(elastic1, testsc1) ###
+
+
+lasso_pc1 <- regglm(trainpca1, 1)
+ridge_pc1 <- regglm(trainpca1, 0)
+elastic_pc1 <- regglm(trainpca1, 0.5)
+
+evalglm(lasso_pc1, testpca1)
+evalglm(ridge_pc1, testpca1)
+evalglm(elastic_pc1, testpca1) 
+
+
+# 결과:
+# 데이터에 상관없이 Elastic Net을 사용한 회귀가 가장 좋은 성능을 보였으며
+# 다중회귀분석 결과와 같이 PCA보다 원본 데이터를 활용했을때 더 좋은 성능을 보임을 확인
+
+
+# 2-2. Random Forest
+library(randomForest)
+
+# 수치형 -> 범주형
+trainsc1$Type <- as.factor(trainsc1$Type)
+trainsc1$Target <- as.factor(trainsc1$Target)
+trainsc1$Failure_Type <- as.factor(trainsc1$Failure_Type)
+testsc1$Type <- as.factor(testsc1$Type)
+testsc1$Target <- as.factor(testsc1$Target)
+testsc1$Failure_Type <- as.factor(testsc1$Failure_Type)
+
+# 랜덤 포레스트 모델 학습
+model_rf <- randomForest(Target ~ Air_temperature_K + Process_temperature_K + 
+                         Rotational_speed_rpm + Torque_Nm + Tool_wear_min + Type + Failure_Type,
+                         data = trainsc1, importance = TRUE)
+
+# 모델 요약
+print(model_rf)
+
+# 모델 예측
+predictions <- predict(model_rf, newdata = testsc1)
+
+# 혼동 행렬 생성
+confMat <- confusionMatrix(predictions, testsc1$Target)
+print(confMat)
+
+# 변수 중요도 시각화
+varImpPlot(model_rf)
+
+# 모델 튜닝 (필요시)
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+tuneGrid <- expand.grid(.mtry=c(2:5))
+
+rf_tuned <- train(Target ~ Air_temperature_K + Process_temperature_K + 
+                  Rotational_speed_rpm + Torque_Nm + Tool_wear_min + Type + Failure_Type,
+                  data = trainsc1, method = "rf", trControl = control, tuneGrid = tuneGrid)
+
+# 최적 모델 확인
+print(rf_tuned)
+
+# 최적 모델로 예측 및 평가
+predictions_tuned <- predict(rf_tuned, newdata = testsc1)
+confMat_tuned <- confusionMatrix(predictions_tuned, testsc1$Target)
+print(confMat_tuned)
+
+
+# 2-3. Support Vector Regression
+
+
+## 3. 모델 평가 및 개선
+
+```
